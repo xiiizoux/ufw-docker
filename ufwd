@@ -109,7 +109,7 @@ function add_rule_after_marker() {
 function delete_rule_by_pattern() {
     local file="$1"
     local marker="$2"
-    local pattern="$3"  # A substring to match in the rule line
+    local pattern="$3"  # A substring or multiple substrings to match
     
     if [[ ! -f "$file" ]]; then
         return 0
@@ -131,10 +131,31 @@ function delete_rule_by_pattern() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((line_num++))
         
-        # Check if line contains the pattern and is after marker
-        if [[ $line_num -gt $marker_line ]] && [[ "$line" = *${pattern}* ]]; then
-            found=true
-                    continue
+        # Check if line contains ALL pattern components and is after marker
+        if [[ $line_num -gt $marker_line ]]; then
+            local matches_all=true
+            
+            # If pattern contains "--dport", check for port match
+            if [[ "$pattern" =~ --dport\ ([0-9]+) ]]; then
+                local port="${BASH_REMATCH[1]}"
+                if [[ ! "$line" = *--dport\ $port* ]]; then
+                    matches_all=false
+                fi
+            fi
+            
+            # If pattern contains "-s", check for source match
+            if [[ "$pattern" =~ -s\ (.+) ]]; then
+                local src="${BASH_REMATCH[1]}"
+                if [[ ! "$line" = *-s\ $src* ]]; then
+                    matches_all=false
+                fi
+            fi
+            
+            # Delete the line if ALL pattern components match
+            if [[ "$matches_all" == true ]] && [[ -n "$pattern" ]]; then
+                found=true
+                continue
+            fi
         fi
         
         echo "$line" >> "$temp_file"
@@ -278,7 +299,7 @@ function build_iptables_rule() {
     echo "$rule"
 }
 
-# Build pattern for deletion
+# Build pattern for deletion - use multiple patterns for better matching
 function build_delete_pattern() {
     local args=("$@")
     
@@ -292,17 +313,27 @@ function build_delete_pattern() {
     local src="${rest2%%|*}"
     
     # Build pattern string for matching
+    # We'll match the key components that uniquely identify the rule
     local pattern=""
+    local parts=()
     
-    if [[ -n "$proto" && -n "$port" ]]; then
-        pattern="-p $proto --dport $port"
-    elif [[ -n "$port" ]]; then
-        pattern="--dport $port"
+    # Add port pattern if port is specified
+    if [[ -n "$port" ]]; then
+        parts+=("--dport $port")
     fi
     
+    # Add source pattern if specified
     if [[ -n "$src" ]]; then
-        [[ -n "$pattern" ]] && pattern="$pattern -s $src" || pattern="-s $src"
+        parts+=("-s $src")
     fi
+    
+    # Combine parts
+    if [[ ${#parts[@]} -gt 0 ]]; then
+        pattern=$(IFS=" " ; echo "${parts[*]}")
+    fi
+    
+    # Debug output
+    info "Delete pattern: $pattern"
     
     echo "$pattern"
 }
