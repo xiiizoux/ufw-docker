@@ -221,6 +221,14 @@ function delete_rule_by_pattern() {
         if [[ $line_num -gt $marker_line ]] && [[ -n "$pattern" ]]; then
             local should_delete=true
             
+            # If pattern contains "-p", check for protocol match
+            if [[ "$pattern" =~ -p\ (tcp|udp) ]]; then
+                local proto="${BASH_REMATCH[1]}"
+                if [[ ! "$line" = *-p\ $proto* ]]; then
+                    should_delete=false
+                fi
+            fi
+            
             # If pattern contains "--dport", check for port match
             if [[ "$pattern" =~ --dport\ ([0-9]+) ]]; then
                 local port="${BASH_REMATCH[1]}"
@@ -264,6 +272,7 @@ function parse_ufw_args() {
     local port=""
     local src=""
     local dst=""
+    local proto_specified=false
     
     local i=0
     while [[ $i -lt ${#args[@]} ]]; do
@@ -274,10 +283,12 @@ function parse_ufw_args() {
             proto)
                 ((i++))
                 proto="$next_arg"
+                proto_specified=true
                 ;;
             protocol)
                 ((i++))
                 proto="$next_arg"
+                proto_specified=true
                 ;;
             from)
                 ((i++))
@@ -305,8 +316,9 @@ function parse_ufw_args() {
                     # Format: "80/tcp" or "53/udp"
                     port="${arg%%/*}"
                     proto="${arg#*/}"
+                    proto_specified=true
                 elif [[ "$arg" =~ ^[0-9]+$ ]] && [[ -z "$port" ]]; then
-                    # Just a number: assume it's a port
+                    # Just a number: assume it's a port, no protocol specified
                     port="$arg"
                 elif [[ "$arg" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]+$ ]]; then
                     # IPv4 with CIDR
@@ -321,10 +333,13 @@ function parse_ufw_args() {
         ((i++))
     done
     
-    # Set defaults
-    proto="${proto:-tcp}"
-    
-    echo "$proto|$port|$src|$dst"
+    # Return proto, proto_specified, port, src, dst
+    # Use "both" if no protocol specified, otherwise use the specified protocol
+    if [[ "$proto_specified" == false ]]; then
+        echo "both|$port|$src|$dst"
+    else
+        echo "${proto:-tcp}|$port|$src|$dst"
+    fi
 }
 
 # Build iptables rule
@@ -401,6 +416,11 @@ function build_delete_pattern() {
     # We'll match the key components that uniquely identify the rule
     local pattern=""
     local parts=()
+    
+    # Add protocol pattern if protocol is specified and not "both"
+    if [[ -n "$proto" ]] && [[ "$proto" != "both" ]]; then
+        parts+=("-p $proto")
+    fi
     
     # Add port pattern if port is specified
     if [[ -n "$port" ]]; then
@@ -595,27 +615,78 @@ function handle_rule() {
     
     check_ufw strict
     
-    # Build the iptables rule
-    local rule
-    rule=$(build_iptables_rule "$action" "$@")
+    # Parse arguments to check for IP addresses and protocols
+    local parsed
+    parsed=$(parse_ufw_args "$@")
     
-    # Determine if this is IPv6 based on source or destination address in the rule itself
-    local is_ipv6=false
-    # Check if the rule contains IPv6 address (contains ::)
-    if [[ "$rule" =~ :: ]]; then
-        is_ipv6=true
-    fi
+    local proto="${parsed%%|*}"
+    local rest="${parsed#*|}"
+    local port="${rest%%|*}"
+    local rest2="${rest#*|}"
+    local src="${rest2%%|*}"
     
-    # Add to appropriate file(s)
-    # IPv6 rules go to after6.rules only
-    # IPv4 rules go to after.rules only
-    if [[ "$is_ipv6" == true ]]; then
-        # IPv6 address: only add to IPv6 file
-        add_rule_after_marker "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$rule"
+    # Check if source IP is specified
+    local has_ipv6=false
+    local has_ipv4=false
+    local has_no_ip=false
+    
+    if [[ -n "$src" ]]; then
+        if [[ "$src" =~ :: ]]; then
+            has_ipv6=true
+        else
+            has_ipv4=true
+        fi
     else
-        # IPv4 address or no address: only add to IPv4 file
-        add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
+        has_no_ip=true
     fi
+    
+    # Handle protocol: if "both", create both tcp and udp rules
+    local protocols=("$proto")
+    if [[ "$proto" == "both" ]]; then
+        protocols=("tcp" "udp")
+    fi
+    
+    # Build and add rules for each protocol
+    for protocol in "${protocols[@]}"; do
+        # Build rule with specific protocol
+        local rule
+        
+        # If protocol is "both", we're building for tcp or udp
+        # Reconstruct the arguments with the specific protocol
+        local new_args=()
+        if [[ "$proto" == "both" ]]; then
+            # Replace the port argument with port/protocol format
+            local prev_arg=""
+            for arg in "$@"; do
+                # Check if this is a numeric argument (could be a port)
+                if [[ "$arg" =~ ^[0-9]+$ ]]; then
+                    # This is a bare port number (not part of CIDR), add protocol
+                    new_args+=("$arg/$protocol")
+                else
+                    # Keep other arguments as is (from, to, port keywords, IPs, etc.)
+                    new_args+=("$arg")
+                fi
+                prev_arg="$arg"
+            done
+            rule=$(build_iptables_rule "$action" "${new_args[@]}")
+        else
+            # Protocol was specified, build normally
+            rule=$(build_iptables_rule "$action" "$@")
+        fi
+        
+        # Add to appropriate file(s)
+        if [[ "$has_ipv6" == true ]]; then
+            # Only IPv6
+            add_rule_after_marker "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$rule"
+        elif [[ "$has_ipv4" == true ]]; then
+            # Only IPv4
+            add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
+        else
+            # No IP specified: add to both IPv4 and IPv6
+            add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
+            add_rule_after_marker "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$rule"
+        fi
+    done
 }
 
 # Handle status command - show only ufwd-managed rules
@@ -740,28 +811,89 @@ function handle_delete() {
     
     check_ufw strict
     
-    # Build pattern for deletion
-    # This will only delete rules from after.rules and after6.rules, NOT from ufw
-    local pattern
-    pattern=$(build_delete_pattern "$@")
+    # Parse arguments to check for IP addresses and protocols
+    local parsed
+    parsed=$(parse_ufw_args "$@")
     
-    if [[ -z "$pattern" ]]; then
-        die "Unable to determine pattern for deletion. Please specify port or source."
+    local proto="${parsed%%|*}"
+    local rest="${parsed#*|}"
+    local port="${rest%%|*}"
+    local rest2="${rest#*|}"
+    local src="${rest2%%|*}"
+    
+    # Check if source IP is specified
+    local has_ipv6=false
+    local has_ipv4=false
+    local has_no_ip=false
+    
+    if [[ -n "$src" ]]; then
+        if [[ "$src" =~ :: ]]; then
+            has_ipv6=true
+        else
+            has_ipv4=true
+        fi
+    else
+        has_no_ip=true
     fi
     
-    # IMPORTANT: We ONLY delete from after.rules and after6.rules files
-    # We do NOT call ufw delete command
+    # Handle protocol: if "both", need to delete both tcp and udp rules
+    local protocols=("$proto")
+    if [[ "$proto" == "both" ]]; then
+        protocols=("tcp" "udp")
+    fi
     
+    # Build delete patterns for each protocol
     local deleted_v4=false
     local deleted_v6=false
     
-    if delete_rule_by_pattern "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$pattern"; then
-        deleted_v4=true
-    fi
-    
-    if delete_rule_by_pattern "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$pattern"; then
-        deleted_v6=true
-    fi
+    for protocol in "${protocols[@]}"; do
+        # Build pattern for this protocol
+        local pattern
+        
+        # Reconstruct arguments with specific protocol for pattern matching
+        local new_args=()
+        if [[ "$proto" == "both" ]]; then
+            # Replace port argument with port/protocol format
+            for arg in "$@"; do
+                # Check if this is a numeric argument (could be a port)
+                if [[ "$arg" =~ ^[0-9]+$ ]]; then
+                    # This is a bare port number, add protocol
+                    new_args+=("$arg/$protocol")
+                else
+                    # Keep other arguments as is
+                    new_args+=("$arg")
+                fi
+            done
+            pattern=$(build_delete_pattern "${new_args[@]}")
+        else
+            pattern=$(build_delete_pattern "$@")
+        fi
+        
+        if [[ -z "$pattern" ]]; then
+            continue
+        fi
+        
+        # Delete from appropriate file(s)
+        if [[ "$has_ipv6" == true ]]; then
+            # Only IPv6
+            if delete_rule_by_pattern "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$pattern"; then
+                deleted_v6=true
+            fi
+        elif [[ "$has_ipv4" == true ]]; then
+            # Only IPv4
+            if delete_rule_by_pattern "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$pattern"; then
+                deleted_v4=true
+            fi
+        else
+            # No IP specified: delete from both IPv4 and IPv6
+            if delete_rule_by_pattern "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$pattern"; then
+                deleted_v4=true
+            fi
+            if delete_rule_by_pattern "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$pattern"; then
+                deleted_v6=true
+            fi
+        fi
+    done
     
     if [[ "$deleted_v4" == true ]] || [[ "$deleted_v6" == true ]]; then
         info "✓ Rule deleted"
