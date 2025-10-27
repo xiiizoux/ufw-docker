@@ -61,7 +61,29 @@ function find_marker_line() {
     grep -n "$marker" "$file" 2>/dev/null | head -1 | cut -d: -f1
 }
 
-# Add a rule after the marker line
+# Calculate rule specificity for sorting (more specific = higher score)
+function calculate_rule_specificity() {
+    local rule="$1"
+    local score=0
+    
+    # More criteria = more specific rule
+    if [[ "$rule" =~ -s\ [^[:space:]]+ ]]; then
+        ((score += 20))  # Source IP makes rule more specific
+    fi
+    if [[ "$rule" =~ -d\ [^[:space:]]+ ]]; then
+        ((score += 10))  # Destination IP
+    fi
+    if [[ "$rule" =~ --dport\ [0-9]+ ]]; then
+        ((score += 5))   # Port specification
+    fi
+    if [[ "$rule" =~ -p\ [^[:space:]]+ ]]; then
+        ((score += 1))   # Protocol
+    fi
+    
+    echo "$score"
+}
+
+# Add a rule after the marker line with automatic sorting by specificity
 function add_rule_after_marker() {
     local file="$1"
     local marker="$2"
@@ -78,11 +100,28 @@ function add_rule_after_marker() {
         die "Section marker not found in $file: $marker"
     fi
     
-    # Check if rule already exists (use simple pattern matching to avoid issues with long rules)
-    # Escape the rule for grep and check with fgrep for exact match
+    # Check if rule already exists
     if printf '%s\n' "$rule" | grep -Fqf /dev/stdin "$file" 2>/dev/null; then
         return 0
     fi
+    
+    # Calculate specificity of the new rule
+    local new_rule_specificity
+    new_rule_specificity=$(calculate_rule_specificity "$rule")
+    
+    # Find the next section line
+    local next_section_line
+    next_section_line=$(awk -v marker="$marker_line" '
+        NR > marker {
+            if ($0 ~ /^# [0-9]+\./) {
+                print NR
+                exit
+            }
+        }
+        END {
+            print NR + 1
+        }
+    ' "$file" | head -1)
     
     # Create temp file
     local temp_file
@@ -91,11 +130,61 @@ function add_rule_after_marker() {
     # Write everything up to and including marker line
     head -n "$marker_line" "$file" > "$temp_file"
     
-    # Add the new rule
-    echo "$rule" >> "$temp_file"
+    # Collect all existing rules and their specificities
+    local rules_array=()
+    local specificities_array=()
+    local other_lines=()
     
-    # Append the rest
-    tail -n +$((marker_line + 1)) "$file" >> "$temp_file"
+    # Read from marker+1 to end of file
+    local line_num=$((marker_line + 1))
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if (( line_num >= next_section_line )); then
+            # Store lines after the user section
+            other_lines+=("$line")
+        elif [[ "$line" =~ ^-A[[:space:]]+DOCKER-USER ]]; then
+            # This is a rule - store it for sorting
+            local spec=$(calculate_rule_specificity "$line")
+            specificities_array+=("$spec")
+            rules_array+=("$line")
+        fi
+        # Note: Comments and blank lines in section 4 are not preserved
+        # Only user-added rules are stored and sorted
+        ((line_num++))
+    done < <(tail -n +$((marker_line + 1)) "$file")
+    
+    # Add the new rule
+    specificities_array+=("$new_rule_specificity")
+    rules_array+=("$rule")
+    
+    # Sort rules by specificity (descending - most specific first)
+    # Use indices array for sorting
+    local indices=()
+    for i in "${!rules_array[@]}"; do
+        indices+=("$i")
+    done
+    
+    # Bubble sort by specificity (descending)
+    local n=${#rules_array[@]}
+    for ((i=0; i<n-1; i++)); do
+        for ((j=0; j<n-i-1; j++)); do
+            if (( specificities_array[indices[j]] < specificities_array[indices[j+1]] )); then
+                # Swap indices
+                local temp=${indices[j]}
+                indices[j]=${indices[j+1]}
+                indices[j+1]=$temp
+            fi
+        done
+    done
+    
+    # Now write the sorted rules
+    for i in "${indices[@]}"; do
+        echo "${rules_array[i]}" >> "$temp_file"
+    done
+    
+    # Write remaining lines (section headers, etc.)
+    for line in "${other_lines[@]}"; do
+        echo "$line" >> "$temp_file"
+    done
     
     # Replace original file
     cp "$temp_file" "$file"
@@ -544,14 +633,14 @@ function handle_status() {
             local has_ipv4_rules=false
             
             # Use awk to extract rules between marker and next section
+            # ONLY show rules that are in the user section (between marker and next numbered section)
             local awk_result
             awk_result=$(awk -v marker="$marker_line_ipv4" '
                 NR > marker {
                     if ($0 ~ /^# [0-9]+\./) {
-                        next_section = $0
                         exit
                     }
-                    if ($0 ~ /^-A +DOCKER-USER/) {
+                    if ($0 ~ /^-A[[:space:]]+DOCKER-USER/) {
                         print
                     }
                 }
@@ -592,7 +681,7 @@ function handle_status() {
                     if ($0 ~ /^# [0-9]+\./) {
                         exit
                     }
-                    if ($0 ~ /^-A +DOCKER-USER/) {
+                    if ($0 ~ /^-A[[:space:]]+DOCKER-USER/) {
                         print
                     }
                 }
@@ -732,8 +821,8 @@ function main() {
             # ufwd doesn't control reload/reset, use ufw directly
             echo "Note: Use 'ufw reload' or 'ufw reset' for firewall operations." >&2
             ufw "$@"
-            ;;
-        status)
+        ;;
+    status)
             # Show ufwd-managed rules from after.rules files only
             shift  # Skip "status"
             handle_status "status" "$@"
