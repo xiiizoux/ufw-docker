@@ -78,9 +78,10 @@ function add_rule_after_marker() {
         die "Section marker not found in $file: $marker"
     fi
     
-    # Check if rule already exists (exact match)
-    if grep -Fxq "$rule" "$file"; then
-        info "Rule already exists: $rule"
+    # Check if rule already exists (use simple pattern matching to avoid issues with long rules)
+    # Escape the rule for grep and check with fgrep for exact match
+    if printf '%s\n' "$rule" | grep -Fqf /dev/stdin "$file" 2>/dev/null; then
+        info "Rule already exists"
         return 0
     fi
     
@@ -487,21 +488,22 @@ function handle_rule() {
     
     info "Adding rule: $rule"
     
-    # Determine if this is IPv6 based on source address
+    # Determine if this is IPv6 based on source or destination address in the rule itself
     local is_ipv6=false
-    for arg in "$@"; do
-        if [[ "$arg" =~ : ]]; then
-            is_ipv6=true
-            break
-        fi
-    done
+    # Check if the rule contains IPv6 address (contains ::)
+    if [[ "$rule" =~ :: ]]; then
+        is_ipv6=true
+    fi
     
-    # Add to IPv4 file
-    add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
-    
-    # Add to IPv6 file if IPv6 address or always
+    # Add to appropriate file(s)
+    # IPv6 rules go to after6.rules only
+    # IPv4 rules go to after.rules only
     if [[ "$is_ipv6" == true ]]; then
+        # IPv6 address: only add to IPv6 file
         add_rule_after_marker "$AFTER6_RULES" "$SECTION_MARKER_IPV6" "$rule"
+    else
+        # IPv4 address or no address: only add to IPv4 file
+        add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
     fi
     
     info ""
