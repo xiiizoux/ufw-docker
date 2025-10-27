@@ -81,7 +81,6 @@ function add_rule_after_marker() {
     # Check if rule already exists (use simple pattern matching to avoid issues with long rules)
     # Escape the rule for grep and check with fgrep for exact match
     if printf '%s\n' "$rule" | grep -Fqf /dev/stdin "$file" 2>/dev/null; then
-        info "Rule already exists"
         return 0
     fi
     
@@ -101,8 +100,6 @@ function add_rule_after_marker() {
     # Replace original file
     cp "$temp_file" "$file"
     rm "$temp_file"
-    
-    info "Added rule to $file"
 }
 
 # Delete a rule (fuzzy match by pattern)
@@ -513,8 +510,6 @@ function handle_rule() {
     local rule
     rule=$(build_iptables_rule "$action" "$@")
     
-    info "Adding rule: $rule"
-    
     # Determine if this is IPv6 based on source or destination address in the rule itself
     local is_ipv6=false
     # Check if the rule contains IPv6 address (contains ::)
@@ -532,10 +527,6 @@ function handle_rule() {
         # IPv4 address or no address: only add to IPv4 file
         add_rule_after_marker "$AFTER_RULES" "$SECTION_MARKER_IPV4" "$rule"
     fi
-    
-    info ""
-    info "✓ Rule added successfully!"
-    info "  Restart UFW to apply: sudo systemctl restart ufw"
 }
 
 # Handle status command - show only ufwd-managed rules
@@ -654,8 +645,7 @@ function handle_delete() {
     fi
     
     if [[ "$deleted_v4" == true ]] || [[ "$deleted_v6" == true ]]; then
-        info "✓ Rule deleted!"
-        info "  Restart UFW to apply changes: sudo systemctl restart ufw"
+        info "✓ Rule deleted"
     else
         info "Could not delete: rule not found"
     fi
