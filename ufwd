@@ -543,23 +543,99 @@ function handle_rule() {
     info "  Restart UFW to apply: sudo systemctl restart ufw"
 }
 
+# Handle status command - show only ufwd-managed rules
+function handle_status() {
+    local cmd="${1:-status}"
+    
+    info "UFW Docker (ufwd) managed rules:"
+    info ""
+    
+    # Read rules from after.rules
+    if [[ -f "$AFTER_RULES" ]]; then
+        local marker_line_ipv4
+        marker_line_ipv4=$(find_marker_line "$AFTER_RULES" "$SECTION_MARKER_IPV4")
+        
+        if [[ -n "$marker_line_ipv4" ]]; then
+            info "IPv4 Rules:"
+            local line_num=0
+            local rule_num=1
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                ((line_num++))
+                if [[ $line_num -gt $marker_line_ipv4 ]]; then
+                    # Check if this is a DOCKER-USER rule (not just a comment)
+                    if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                        if [[ "$cmd" = *numbered* ]]; then
+                            echo "[$rule_num] $line"
+                        else
+                            echo "  $line"
+                        fi
+                        ((rule_num++))
+                    fi
+                fi
+            done < "$AFTER_RULES"
+        fi
+    fi
+    
+    # Read rules from after6.rules
+    if [[ -f "$AFTER6_RULES" ]]; then
+        local marker_line_ipv6
+        marker_line_ipv6=$(find_marker_line "$AFTER6_RULES" "$SECTION_MARKER_IPV6")
+        
+        if [[ -n "$marker_line_ipv6" ]]; then
+            info "IPv6 Rules:"
+            local line_num=0
+            local rule_num=1
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                ((line_num++))
+                if [[ $line_num -gt $marker_line_ipv6 ]]; then
+                    # Check if this is a DOCKER-USER rule
+                    if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                        if [[ "$cmd" = *numbered* ]]; then
+                            echo "[$rule_num] $line"
+                        else
+                            echo "  $line"
+                        fi
+                        ((rule_num++))
+                    fi
+                fi
+            done < "$AFTER6_RULES"
+        fi
+    fi
+    
+    info ""
+    info "To see all UFW rules, use: sudo ufw status"
+}
+
+# Handle show command
+function handle_show() {
+    handle_status "status"
+}
+
 # Handle delete command
 function handle_delete() {
     local first_arg="${1:-}"
     
-    # If first arg is not allow/deny/reject, pass to ufw
+    local action="${first_arg}"
+    
+    # If first arg is not allow/deny/reject, we need to handle it differently
     if [[ "$first_arg" != "allow" && "$first_arg" != "deny" && "$first_arg" != "reject" ]]; then
-        # This is likely a numbered delete: pass to ufw
-        ufw "$@"
-        return
+        # This is likely a numbered delete or invalid command
+        # For numbered deletes, pass to ufw
+        if [[ "$first_arg" =~ ^[0-9]+$ ]]; then
+            ufw "$@"
+            return
+        fi
+        
+        # Invalid delete command
+        die "Invalid delete command syntax"
     fi
     
-    local action="$first_arg"
     shift
     
     check_ufw strict
     
     # Build pattern for deletion
+    # This will only delete rules from after.rules and after6.rules, NOT from ufw
     local pattern
     pattern=$(build_delete_pattern "$@")
     
@@ -568,6 +644,11 @@ function handle_delete() {
     fi
     
     info "Deleting rules matching: $pattern"
+    info "Will check IPv4 file: $AFTER_RULES"
+    info "Will check IPv6 file: $AFTER6_RULES"
+    
+    # IMPORTANT: We ONLY delete from after.rules and after6.rules files
+    # We do NOT call ufw delete command
     
     local deleted_v4=false
     local deleted_v6=false
@@ -581,10 +662,21 @@ function handle_delete() {
     fi
     
     if [[ "$deleted_v4" == true ]] || [[ "$deleted_v6" == true ]]; then
-        info "✓ Rule deleted!"
-        info "  Restart UFW to apply: sudo systemctl restart ufw"
+        info "✓ Rule deleted from after.rules files!"
+        info "  Restart UFW to apply changes: sudo systemctl restart ufw"
     else
-        info "No matching rule found"
+        info "Could not delete non-existent rule"
+        info "Checked files:"
+        if [[ -f "$AFTER_RULES" ]]; then
+            info "  IPv4: $AFTER_RULES"
+            info "Checking IPv4 rules after marker:"
+            grep -A 10 "$SECTION_MARKER_IPV4" "$AFTER_RULES" 2>/dev/null || info "    No rules found after marker"
+        fi
+        if [[ -f "$AFTER6_RULES" ]]; then
+            info "  IPv6: $AFTER6_RULES"  
+            info "Checking IPv6 rules after marker:"
+            grep -A 10 "$SECTION_MARKER_IPV6" "$AFTER6_RULES" 2>/dev/null || info "    No rules found after marker"
+        fi
     fi
 }
 
@@ -606,44 +698,44 @@ function main() {
             handle_rule "$cmd" "$@"
             ;;
         limit)
-            # limit command behaves like allow but with rate limiting
-            # For ufwd, we'll pass it through to ufw since it's not commonly
-            # used for Docker port management. If needed, it can be handled similarly to allow
+            # ufwd doesn't handle limit, use ufw directly
+            echo "Note: 'limit' is not supported by ufwd. Use 'ufw limit' for rate limiting." >&2
             ufw "$@"
             ;;
     delete)
-            # Handle rule deletions
+            # Handle rule deletions - ONLY from after.rules files
             handle_delete "$@"
             ;;
         insert|prepend)
-            # insert/prepend are for manipulating existing rules by position
-            # These don't fit well with ufwd's model of adding to a specific section
-            # Pass through to ufw
+            # ufwd doesn't support insert/prepend, use ufw directly
+            echo "Note: 'insert/prepend' are not supported by ufwd." >&2
             ufw "$@"
             ;;
         route|"route delete"|"route insert")
-            # Route commands are for NAT rules, pass to ufw
+            # ufwd doesn't handle route rules, use ufw directly
+            echo "Note: 'route' rules are not managed by ufwd. Use 'ufw route' for NAT rules." >&2
             ufw "$@"
             ;;
         enable|disable)
-            # Enable/disable firewall
+            # ufwd doesn't control firewall state, use ufw directly
             ufw "$@"
             ;;
         default|logging)
-            # Set defaults and logging level
+            # ufwd doesn't manage defaults/logging, use ufw directly
             ufw "$@"
             ;;
         reload|reset)
-            # Reload or reset firewall
+            # ufwd doesn't control reload/reset, use ufw directly
+            echo "Note: Use 'ufw reload' or 'ufw reset' for firewall operations." >&2
             ufw "$@"
             ;;
         status|"status numbered"|"status verbose")
-            # Show firewall status
-            ufw "$@"
+            # Show ufwd-managed rules from after.rules files only
+            handle_status "$@"
             ;;
         show)
-            # Show firewall report
-            ufw "$@"
+            # Show ufwd-managed rules
+            handle_show "$@"
             ;;
         version)
             # Show version information
@@ -665,15 +757,16 @@ function main() {
             echo "  init              Initialize ufwd rule files"
             echo "  uninit            Restore original UFW rule files"
             echo ""
-            echo "Rule management (rules added to 'Container port access' section):"
-            echo "  allow ARGS        add allow rule"
-            echo "  deny ARGS         add deny rule"
-            echo "  reject ARGS       add reject rule"
-            echo "  delete allow ARGS delete allow rule"
-            echo "  delete deny ARGS  delete deny rule"
+            echo "UFWD-managed rule operations (only affects after.rules files):"
+            echo "  allow ARGS        add allow rule to after.rules"
+            echo "  deny ARGS         add deny rule to after.rules"
+            echo "  reject ARGS       add reject rule to after.rules"
+            echo "  delete allow ARGS delete allow rule from after.rules"
+            echo "  delete deny ARGS  delete deny rule from after.rules"
+            echo "  delete reject ARGS delete reject rule from after.rules"
+            echo "  status            show ufwd-managed rules (from after.rules only)"
             echo ""
-            echo "All other UFW commands are passed through to ufw:"
-            echo "  status            show firewall status"
+            echo "Other commands (passed to ufw for system management):"
             echo "  enable/disable    enable/disable firewall"
             echo "  reload/reset      reload/reset firewall"
             echo "  app               application profile commands"
