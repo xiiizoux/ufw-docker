@@ -532,9 +532,7 @@ function handle_rule() {
 # Handle status command - show only ufwd-managed rules
 function handle_status() {
     local cmd="${1:-status}"
-    
-    info "UFW Docker (ufwd) managed rules:"
-    info ""
+    local has_rules=false
     
     # Read rules from after.rules
     if [[ -f "$AFTER_RULES" ]]; then
@@ -542,14 +540,20 @@ function handle_status() {
         marker_line_ipv4=$(find_marker_line "$AFTER_RULES" "$SECTION_MARKER_IPV4")
         
         if [[ -n "$marker_line_ipv4" ]]; then
-            info "IPv4 Rules:"
             local line_num=0
             local rule_num=1
+            local has_ipv4_rules=false
+            
             while IFS= read -r line || [[ -n "$line" ]]; do
                 ((line_num++))
                 if [[ $line_num -gt $marker_line_ipv4 ]]; then
                     # Check if this is a DOCKER-USER rule (not just a comment)
                     if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                        if [[ "$has_ipv4_rules" == false ]]; then
+                            echo "IPv4 Rules:"
+                            has_ipv4_rules=true
+                            has_rules=true
+                        fi
                         if [[ "$cmd" = *numbered* ]]; then
                             echo "[$rule_num] $line"
                         else
@@ -568,14 +572,20 @@ function handle_status() {
         marker_line_ipv6=$(find_marker_line "$AFTER6_RULES" "$SECTION_MARKER_IPV6")
         
         if [[ -n "$marker_line_ipv6" ]]; then
-            info "IPv6 Rules:"
             local line_num=0
             local rule_num=1
+            local has_ipv6_rules=false
+            
             while IFS= read -r line || [[ -n "$line" ]]; do
                 ((line_num++))
                 if [[ $line_num -gt $marker_line_ipv6 ]]; then
                     # Check if this is a DOCKER-USER rule
                     if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                        if [[ "$has_ipv6_rules" == false ]]; then
+                            echo "IPv6 Rules:"
+                            has_ipv6_rules=true
+                            has_rules=true
+                        fi
                         if [[ "$cmd" = *numbered* ]]; then
                             echo "[$rule_num] $line"
                         else
@@ -588,8 +598,9 @@ function handle_status() {
         fi
     fi
     
-    info ""
-    info "To see all UFW rules, use: sudo ufw status"
+    if [[ "$has_rules" == false ]]; then
+        echo "No rules configured"
+    fi
 }
 
 # Handle show command
