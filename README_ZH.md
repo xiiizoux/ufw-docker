@@ -4,6 +4,10 @@
 
 专门用于管理 Docker 容器端口防火墙规则的 UFW 包装脚本。命令格式与 `ufw` 完全一致，实现零学习成本。
 
+## 为什么需要这个工具？
+
+Docker 的端口映射会绕开 UFW 的控制，因为 Docker 会直接修改 iptables 规则。本工具通过修改 UFW 的 `after.rules` 配置文件，并使用 `DOCKER-USER` 链实现基于 forward 的过滤方式，从而解决 UFW 与 Docker 的兼容性问题，让 UFW 能够正确管理 Docker 容器的端口访问并保持安全性。
+
 ## 快速开始
 
 ### 安装

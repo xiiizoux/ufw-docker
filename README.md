@@ -4,6 +4,10 @@ English | [中文](./README_ZH.md)
 
 A UFW wrapper script specifically designed for managing Docker container port firewall rules. The command format is fully compatible with `ufw`, providing zero learning curve.
 
+## Why This Tool?
+
+Docker's port mapping bypasses UFW's control because Docker directly modifies iptables rules. This tool solves the compatibility issue by modifying UFW's configuration file `after.rules` and implementing forward-based filtering through the `DOCKER-USER` chain. This approach allows UFW to properly manage Docker container port access while maintaining security.
+
 ## Quick Start
 
 ### Installation
