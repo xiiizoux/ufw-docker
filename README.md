@@ -1,108 +1,110 @@
+English | [中文](./README_ZH.md)
+
 # UFW-Docker (ufwd)
 
-专门用于管理 Docker 容器端口防火墙规则的 UFW 包装脚本。命令格式与 `ufw` 完全一致，实现零学习成本。
+A UFW wrapper script specifically designed for managing Docker container port firewall rules. The command format is fully compatible with `ufw`, providing zero learning curve.
 
-## 快速开始
+## Quick Start
 
-### 安装
+### Installation
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/install.sh | sudo bash
 ```
 
-### 初始化
+### Initialization
 
 ```bash
 sudo ufwd init
 ```
 
-这会备份当前的 `/etc/ufw/after.rules` 和 `/etc/ufw/after6.rules`，并用初始版本替换。
+This will backup your current `/etc/ufw/after.rules` and `/etc/ufw/after6.rules` and replace them with initial versions.
 
-### 使用
+### Usage
 
 ```bash
-# 添加规则
+# Add rules
 sudo ufwd allow 80/tcp
 sudo ufwd allow 443/tcp from 173.245.48.0/20
 
-# 删除规则
+# Delete rules
 sudo ufwd delete allow 80/tcp
 
-# 查看规则
+# View rules
 sudo ufwd status
 
-# 应用更改
+# Apply changes
 sudo systemctl restart ufw
 ```
 
-## 主要功能
+## Key Features
 
-- ✅ **零学习成本**: 命令格式与 `ufw` 完全一致
-- ✅ **自动管理**: 规则自动添加到指定位置
-- ✅ **智能识别**: 自动区分 IPv4 和 IPv6 规则
-- ✅ **安全备份**: 初始化时自动备份原文件
+- ✅ **Zero Learning Curve**: Command format is fully compatible with `ufw`
+- ✅ **Automatic Management**: Rules are automatically added to designated sections
+- ✅ **Smart Detection**: Automatically distinguishes between IPv4 and IPv6 rules
+- ✅ **Safe Backup**: Automatic backup of original files during initialization
 
-## 命令格式
+## Command Format
 
-### 基本命令
+### Basic Commands
 
 ```bash
-# 添加允许规则
+# Add allow rules
 sudo ufwd allow 80/tcp
 sudo ufwd allow 443/tcp from 173.245.48.0/20
 
-# 添加拒绝规则
+# Add deny rules
 sudo ufwd deny 3306/tcp
 
-# 删除规则
+# Delete rules
 sudo ufwd delete allow 80/tcp
 sudo ufwd delete deny 3306/tcp
 
-# 其他命令
+# Other commands
 sudo ufwd status
 sudo ufwd enable
 sudo ufwd disable
 ```
 
-### 初始化命令
+### Initialization Commands
 
 ```bash
-# 初始化（备份并替换规则文件）
+# Initialize (backup and replace rule files)
 sudo ufwd init
 
-# 恢复原始文件
+# Restore original files
 sudo ufwd uninit
 ```
 
-## 重要提示
+## Important Notes
 
-⚠️ **每次添加或删除规则后，必须重启 UFW：**
+⚠️ **You must restart UFW after each rule addition or deletion:**
 
 ```bash
 sudo systemctl restart ufw
 ```
 
-⚠️ **备份文件位置：**
+⚠️ **Backup file locations:**
 
 ```
 /etc/ufw/after.rules_original
 /etc/ufw/after6.rules_original
 ```
 
-## 故障排除
+## Troubleshooting
 
-### 规则没有生效
+### Rules Not Taking Effect
 
-1. 确认已重启 UFW: `sudo systemctl restart ufw`
-2. 检查规则: `sudo cat /etc/ufw/after.rules | grep DOCKER-USER`
-3. 查看状态: `sudo ufwd status`
+1. Ensure UFW has been restarted: `sudo systemctl restart ufw`
+2. Check rules: `sudo cat /etc/ufw/after.rules | grep DOCKER-USER`
+3. View status: `sudo ufwd status`
 
-### 恢复原始配置
+### Restore Original Configuration
 
 ```bash
 sudo ufwd uninit
 ```
 
-## 许可证
+## License
 
-本项目旨在解决 Docker 与 UFW 的兼容性问题，使 Docker 容器的端口管理更方便、更安全。
+This project aims to solve compatibility issues between Docker and UFW, making Docker container port management more convenient and secure.
