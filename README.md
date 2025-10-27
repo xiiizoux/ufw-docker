@@ -2,50 +2,15 @@
 
 专门用于管理 Docker 容器端口防火墙规则的 UFW 包装脚本。命令格式与 `ufw` 完全一致，实现零学习成本。
 
-## 项目结构
-
-```
-.
-├── ufwd              # 主脚本，放在 /usr/local/bin/ 下
-├── after.rules       # IPv4 初始化规则文件
-├── after6.rules      # IPv6 初始化规则文件
-├── install.sh        # 安装脚本
-├── README.md         # 本文件
-└── USAGE.md          # 详细使用文档
-```
-
 ## 快速开始
 
-### 1. 安装
-
-#### 方法 1: 一行命令安装（推荐）
+### 安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/install.sh | sudo bash
 ```
 
-#### 方法 2: 本地安装
-
-如果已经克隆了仓库：
-
-```bash
-sudo ./install.sh
-```
-
-#### 方法 3: 手动安装
-
-```bash
-# 下载脚本
-sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/ufwd -o /usr/local/bin/ufwd
-sudo chmod +x /usr/local/bin/ufwd
-
-# 下载初始化文件
-sudo mkdir -p /usr/local/share/ufwd
-sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/after.rules -o /usr/local/share/ufwd/after.rules
-sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/after6.rules -o /usr/local/share/ufwd/after6.rules
-```
-
-### 2. 初始化
+### 初始化
 
 ```bash
 sudo ufwd init
@@ -53,113 +18,65 @@ sudo ufwd init
 
 这会备份当前的 `/etc/ufw/after.rules` 和 `/etc/ufw/after6.rules`，并用初始版本替换。
 
-### 3. 使用
+### 使用
 
-添加规则：
 ```bash
+# 添加规则
 sudo ufwd allow 80/tcp
-sudo systemctl restart ufw
-```
+sudo ufwd allow 443/tcp from 173.245.48.0/20
 
-删除规则：
-```bash
+# 删除规则
 sudo ufwd delete allow 80/tcp
+
+# 查看规则
+sudo ufwd status
+
+# 应用更改
 sudo systemctl restart ufw
 ```
 
-## 功能特点
+## 主要功能
 
-### ✅ 与 UFW 完全兼容的命令格式
+- ✅ **零学习成本**: 命令格式与 `ufw` 完全一致
+- ✅ **自动管理**: 规则自动添加到指定位置
+- ✅ **智能识别**: 自动区分 IPv4 和 IPv6 规则
+- ✅ **安全备份**: 初始化时自动备份原文件
+
+## 命令格式
+
+### 基本命令
 
 ```bash
-# 所有 ufw 命令都可以直接使用
+# 添加允许规则
 sudo ufwd allow 80/tcp
-sudo ufwd allow 80/tcp from 192.168.1.0/24
+sudo ufwd allow 443/tcp from 173.245.48.0/20
+
+# 添加拒绝规则
 sudo ufwd deny 3306/tcp
-sudo ufwd delete allow 80/tcp
 
-# 其他命令直接传递给 ufw
+# 删除规则
+sudo ufwd delete allow 80/tcp
+sudo ufwd delete deny 3306/tcp
+
+# 其他命令
 sudo ufwd status
 sudo ufwd enable
 sudo ufwd disable
 ```
 
-### ✅ 自动管理规则位置
-
-所有通过 `ufwd` 添加/删除的规则都会自动添加到 UFW 的 after.rules 和 after6.rules 文件中，便于集中管理 Docker 容器端口访问。
-
-### ✅ 智能初始文件查找
-
-`ufwd init` 会自动在以下位置查找初始化文件：
-1. 脚本同目录
-2. `/usr/local/share/ufwd/`
-3. `/etc/ufwd/`
-4. 当前工作目录
-
-### ✅ IPv4 和 IPv6 支持
-
-自动识别 IPv4 和 IPv6 地址，并在对应的规则文件中添加规则。
-
-## 命令说明
-
-### 自定义命令
-
-- `ufwd init`: 初始化规则文件（备份当前文件并用初始版本替换）
-
-### 规则管理（与 ufw 格式一致）
-
-- `ufwd allow <规则>`: 添加允许规则
-- `ufwd deny <规则>`: 添加拒绝规则
-- `ufwd reject <规则>`: 添加拒绝规则（带 ICMP 响应）
-- `ufwd delete allow/deny <规则>`: 删除指定规则
-
-### 传递给 ufw 的命令
-
-所有其他命令都会传递给 `ufw`，包括但不限于：
-
-- 状态查看: `status`, `status numbered`, `status verbose`, `show`
-- 启用/禁用: `enable`, `disable`
-- 配置管理: `default`, `logging`
-- 防火墙操作: `reload`, `reset`
-- 规则位置: `insert`, `prepend` (会传递给 ufw，不使用 ufwd 的管理方式)
-- 路由规则: `route`, `route delete`, `route insert`
-- 限制规则: `limit` (会传递给 ufw)
-- 应用配置: `app list`, `app info`, `app update`, `app default`
-- 版本信息: `version`, `help`
-
-完整的 UFW 命令文档: `man ufw`
-
-## 规则示例
+### 初始化命令
 
 ```bash
-# 允许 HTTP
-sudo ufwd allow 80/tcp
+# 初始化（备份并替换规则文件）
+sudo ufwd init
 
-# 允许 HTTPS
-sudo ufwd allow 443/tcp
-
-# 允许来自特定网段
-sudo ufwd allow 80/tcp from 192.168.1.0/24
-
-# 允许来自 Cloudflare
-sudo ufwd allow 443/tcp from 173.245.48.0/20
-
-# 拒绝 MySQL
-sudo ufwd deny 3306/tcp
-
-# 拒绝私有网络访问 MySQL
-sudo ufwd deny 3306/tcp from 10.0.0.0/8
-```
-
-添加规则后生成的 iptables 规则示例：
-```bash
--A DOCKER-USER -p tcp -m tcp --dport 80 -j RETURN
--A DOCKER-USER -p tcp -m tcp --dport 80 -s 192.168.1.0/24 -j RETURN
+# 恢复原始文件
+sudo ufwd uninit
 ```
 
 ## 重要提示
 
-⚠️ **每次添加或删除规则后，必须重启 UFW 服务：**
+⚠️ **每次添加或删除规则后，必须重启 UFW：**
 
 ```bash
 sudo systemctl restart ufw
@@ -167,35 +84,24 @@ sudo systemctl restart ufw
 
 ⚠️ **备份文件位置：**
 
-初始化时会创建固定的备份文件（首次运行）：
 ```
 /etc/ufw/after.rules_original
 /etc/ufw/after6.rules_original
 ```
 
-如需恢复，使用: `sudo ufwd uninit`
-
-## 设计原则
-
-1. **零学习成本**: `ufwd` 命令格式与 `ufw` 完全一致
-2. **清晰的规则管理**: 自动将规则添加到指定位置，保持文件结构清晰
-3. **安全性**: 自动备份，防止误操作
-4. **便捷性**: 智能查找初始化文件，简化安装过程
-
 ## 故障排除
-
-### 找不到初始化文件
-
-如果 `ufwd init` 提示找不到初始化文件，确保 `after.rules` 和 `after6.rules` 在以下任一位置：
-- 与脚本同目录
-- `/usr/local/share/ufwd/`
-- `/etc/ufwd/`
 
 ### 规则没有生效
 
 1. 确认已重启 UFW: `sudo systemctl restart ufw`
-2. 检查规则是否正确添加到文件: `sudo cat /etc/ufw/after.rules | grep DOCKER-USER`
-3. 查看 UFW 状态: `sudo ufwd status`
+2. 检查规则: `sudo cat /etc/ufw/after.rules | grep DOCKER-USER`
+3. 查看状态: `sudo ufwd status`
+
+### 恢复原始配置
+
+```bash
+sudo ufwd uninit
+```
 
 ## 许可证
 
