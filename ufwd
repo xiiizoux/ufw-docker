@@ -534,10 +534,11 @@ function handle_status() {
     local cmd="${1:-status}"
     local has_rules=false
     
-    # Read rules from after.rules
+    # Debug: Check marker
     if [[ -f "$AFTER_RULES" ]]; then
         local marker_line_ipv4
         marker_line_ipv4=$(find_marker_line "$AFTER_RULES" "$SECTION_MARKER_IPV4")
+        info "Debug: marker_line_ipv4 = $marker_line_ipv4"
         
         if [[ -n "$marker_line_ipv4" ]]; then
             local line_num=0
@@ -552,7 +553,9 @@ function handle_status() {
                         break
                     fi
                     # Check if this is a DOCKER-USER rule (not just a comment)
+                    info "Debug: checking line $line_num: $line"
                     if [[ "$line" =~ ^-A\ DOCKER-USER ]]; then
+                        info "Debug: match! $line"
                         if [[ "$has_ipv4_rules" == false ]]; then
                             echo "IPv4 Rules:"
                             has_ipv4_rules=true
@@ -574,6 +577,7 @@ function handle_status() {
     if [[ -f "$AFTER6_RULES" ]]; then
         local marker_line_ipv6
         marker_line_ipv6=$(find_marker_line "$AFTER6_RULES" "$SECTION_MARKER_IPV6")
+        info "Debug: marker_line_ipv6 = $marker_line_ipv6"
         
         if [[ -n "$marker_line_ipv6" ]]; then
             local line_num=0
