@@ -132,28 +132,29 @@ function delete_rule_by_pattern() {
         ((line_num++))
         
         # Check if line contains ALL pattern components and is after marker
-        if [[ $line_num -gt $marker_line ]]; then
-            local matches_all=true
+        if [[ $line_num -gt $marker_line ]] && [[ -n "$pattern" ]]; then
+            local should_delete=true
             
             # If pattern contains "--dport", check for port match
             if [[ "$pattern" =~ --dport\ ([0-9]+) ]]; then
                 local port="${BASH_REMATCH[1]}"
                 if [[ ! "$line" = *--dport\ $port* ]]; then
-                    matches_all=false
+                    should_delete=false
                 fi
             fi
             
-            # If pattern contains "-s", check for source match
+            # If pattern contains "-s", check for source match  
             if [[ "$pattern" =~ -s\ (.+) ]]; then
                 local src="${BASH_REMATCH[1]}"
                 if [[ ! "$line" = *-s\ $src* ]]; then
-                    matches_all=false
+                    should_delete=false
                 fi
             fi
             
             # Delete the line if ALL pattern components match
-            if [[ "$matches_all" == true ]] && [[ -n "$pattern" ]]; then
+            if [[ "$should_delete" == true ]]; then
                 found=true
+                info "Deleting line: $line"
                 continue
             fi
         fi
