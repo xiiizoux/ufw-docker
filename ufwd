@@ -10,6 +10,7 @@ AFTER6_RULES_ORIGINAL="/etc/ufw/after6.rules_original"
 INIT_AFTER_RULES="${0%/*}/after.rules"
 INIT_AFTER6_RULES="${0%/*}/after6.rules"
 SCRIPT_DIR="$(cd "${0%/*}" 2>/dev/null && pwd)"
+GITHUB_BASE="https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main"
 
 # Container port section markers
 SECTION_MARKER_IPV4="# 4. Container port access rules (add your rules here)"
@@ -132,7 +133,7 @@ function delete_rule_by_pattern() {
         # Check if line contains the pattern and is after marker
         if [[ $line_num -gt $marker_line ]] && [[ "$line" = *${pattern}* ]]; then
             found=true
-            continue
+                    continue
         fi
         
         echo "$line" >> "$temp_file"
@@ -305,6 +306,44 @@ function build_delete_pattern() {
     echo "$pattern"
 }
 
+# Download file from GitHub with error handling
+function download_from_github() {
+    local url="$1"
+    local output="$2"
+    local description="$3"
+    
+    info "Downloading $description from GitHub..."
+    
+    # Check if curl is available
+    if ! command -v curl >/dev/null 2>&1; then
+        die "curl is required but not installed. Please install curl first."
+    fi
+    
+    # Try to download with timeout and retry
+    if ! curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 "$url" -o "$output" 2>/dev/null; then
+        local status_code
+        status_code=$(curl -sSLo /dev/null -w "%{http_code}" --connect-timeout 10 "$url" 2>/dev/null || echo "000")
+        
+        if [[ -f "$output" ]]; then
+            rm -f "$output"
+        fi
+        
+        die "Failed to download $description from GitHub." \
+            "Status code: $status_code" \
+            "URL: $url" \
+            "Please check your network connection and try again later." \
+            "Your UFW configuration was not modified."
+    fi
+    
+    # Verify downloaded file is not empty
+    if [[ ! -s "$output" ]]; then
+        rm -f "$output"
+        die "Downloaded $description is empty. Your UFW configuration was not modified."
+    fi
+    
+    info "✓ Downloaded $description"
+}
+
 # Handle init command
 function handle_init() {
     info "Initializing ufwd..."
@@ -315,7 +354,9 @@ function handle_init() {
     # 2. In script's directory
     # 3. In /usr/local/share/ufwd
     # 4. In /etc/ufwd
+    # 5. Download from GitHub
     local init_after init_after6
+    local temp_dir
     
     for candidate in \
         "${0%/*}/after.rules" \
@@ -341,12 +382,22 @@ function handle_init() {
         fi
     done
     
-    if [[ ! -f "$init_after" ]]; then
-        die "Initial after.rules not found. Searched in: ${0%/*}, /usr/local/share/ufwd, /etc/ufwd"
-    fi
-    
-    if [[ ! -f "$init_after6" ]]; then
-        die "Initial after6.rules not found. Searched in: ${0%/*}, /usr/local/share/ufwd, /etc/ufwd"
+    # If not found locally, download from GitHub
+    if [[ ! -f "$init_after" ]] || [[ ! -f "$init_after6" ]]; then
+        temp_dir=$(mktemp -d)
+        
+        if [[ ! -f "$init_after" ]]; then
+            download_from_github "${GITHUB_BASE}/after.rules" "$temp_dir/after.rules" "after.rules"
+            init_after="$temp_dir/after.rules"
+        fi
+        
+        if [[ ! -f "$init_after6" ]]; then
+            download_from_github "${GITHUB_BASE}/after6.rules" "$temp_dir/after6.rules" "after6.rules"
+            init_after6="$temp_dir/after6.rules"
+        fi
+        
+        # Cleanup temp directory on exit
+        trap "rm -rf \"$temp_dir\"" EXIT
     fi
     
     info "Using init files from:"
@@ -526,7 +577,7 @@ function main() {
             # used for Docker port management. If needed, it can be handled similarly to allow
             ufw "$@"
             ;;
-        delete)
+    delete)
             # Handle rule deletions
             handle_delete "$@"
             ;;
@@ -605,8 +656,8 @@ function main() {
         *)
             # Pass everything else to ufw
             ufw "$@"
-            ;;
-    esac
+        ;;
+esac
 }
 
 # Run main
