@@ -540,33 +540,39 @@ function handle_status() {
         marker_line_ipv4=$(find_marker_line "$AFTER_RULES" "$SECTION_MARKER_IPV4")
         
         if [[ -n "$marker_line_ipv4" ]]; then
-            local line_num=0
             local rule_num=1
             local has_ipv4_rules=false
             
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                ((line_num++))
-                if [[ $line_num -gt $marker_line_ipv4 ]]; then
-                    # Check if this is the next section (section 5 starts)
-                    if [[ "$line" =~ ^#\ [0-9]+\. ]]; then
-                        break
+            # Use awk to extract rules between marker and next section
+            local awk_result
+            awk_result=$(awk -v marker="$marker_line_ipv4" '
+                NR > marker {
+                    if ($0 ~ /^# [0-9]+\./) {
+                        next_section = $0
+                        exit
+                    }
+                    if ($0 ~ /^-A +DOCKER-USER/) {
+                        print
+                    }
+                }
+            ' "$AFTER_RULES" 2>/dev/null)
+            
+            if [[ -n "$awk_result" ]]; then
+                while IFS= read -r rule; do
+                    [[ -z "$rule" ]] && continue
+                    if [[ "$has_ipv4_rules" == false ]]; then
+                        echo "IPv4 Rules:"
+                        has_ipv4_rules=true
+                        has_rules=true
                     fi
-                    # Check if this is a DOCKER-USER rule (not just a comment)
-                    if [[ "$line" =~ ^-A\ DOCKER-USER ]]; then
-                        if [[ "$has_ipv4_rules" == false ]]; then
-                            echo "IPv4 Rules:"
-                            has_ipv4_rules=true
-                            has_rules=true
-                        fi
-                        if [[ "$cmd" = *numbered* ]]; then
-                            echo "[$rule_num] $line"
-                        else
-                            echo "  $line"
-                        fi
-                        ((rule_num++))
+                    if [[ "$cmd" = *numbered* ]]; then
+                        echo "[$rule_num] $rule"
+                    else
+                        echo "  $rule"
                     fi
-                fi
-            done < "$AFTER_RULES"
+                    ((rule_num++))
+                done <<< "$awk_result"
+            fi
         fi
     fi
     
@@ -576,33 +582,38 @@ function handle_status() {
         marker_line_ipv6=$(find_marker_line "$AFTER6_RULES" "$SECTION_MARKER_IPV6")
         
         if [[ -n "$marker_line_ipv6" ]]; then
-            local line_num=0
             local rule_num=1
             local has_ipv6_rules=false
             
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                ((line_num++))
-                if [[ $line_num -gt $marker_line_ipv6 ]]; then
-                    # Check if this is the next section (section 5 starts)
-                    if [[ "$line" =~ ^#\ [0-9]+\. ]]; then
-                        break
+            # Use awk to extract rules between marker and next section
+            local awk_result
+            awk_result=$(awk -v marker="$marker_line_ipv6" '
+                NR > marker {
+                    if ($0 ~ /^# [0-9]+\./) {
+                        exit
+                    }
+                    if ($0 ~ /^-A +DOCKER-USER/) {
+                        print
+                    }
+                }
+            ' "$AFTER6_RULES" 2>/dev/null)
+            
+            if [[ -n "$awk_result" ]]; then
+                while IFS= read -r rule; do
+                    [[ -z "$rule" ]] && continue
+                    if [[ "$has_ipv6_rules" == false ]]; then
+                        echo "IPv6 Rules:"
+                        has_ipv6_rules=true
+                        has_rules=true
                     fi
-                    # Check if this is a DOCKER-USER rule
-                    if [[ "$line" =~ ^-A\ DOCKER-USER ]]; then
-                        if [[ "$has_ipv6_rules" == false ]]; then
-                            echo "IPv6 Rules:"
-                            has_ipv6_rules=true
-                            has_rules=true
-                        fi
-                        if [[ "$cmd" = *numbered* ]]; then
-                            echo "[$rule_num] $line"
-                        else
-                            echo "  $line"
-                        fi
-                        ((rule_num++))
+                    if [[ "$cmd" = *numbered* ]]; then
+                        echo "[$rule_num] $rule"
+                    else
+                        echo "  $rule"
                     fi
-                fi
-            done < "$AFTER6_RULES"
+                    ((rule_num++))
+                done <<< "$awk_result"
+            fi
         fi
     fi
     
