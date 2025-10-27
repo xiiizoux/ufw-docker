@@ -86,7 +86,7 @@ sudo ufwd disable
 
 ### ✅ 自动管理规则位置
 
-所有通过 `ufwd` 添加/删除的规则都自动放在 `after.rules` 和 `after6.rules` 的 "# 4️⃣ 开启容器端口" 部分，保持文件结构清晰。
+所有通过 `ufwd` 添加/删除的规则都会自动添加到 UFW 的 after.rules 和 after6.rules 文件中，便于集中管理 Docker 容器端口访问。
 
 ### ✅ 智能初始文件查找
 
@@ -108,9 +108,9 @@ sudo ufwd disable
 
 ### 规则管理（与 ufw 格式一致）
 
-- `ufwd allow <规则>`: 添加允许规则到 "# 4️⃣ 开启容器端口" 部分
-- `ufwd deny <规则>`: 添加拒绝规则到 "# 4️⃣ 开启容器端口" 部分
-- `ufwd reject <规则>`: 添加拒绝规则（带 ICMP 响应）到 "# 4️⃣ 开启容器端口" 部分
+- `ufwd allow <规则>`: 添加允许规则
+- `ufwd deny <规则>`: 添加拒绝规则
+- `ufwd reject <规则>`: 添加拒绝规则（带 ICMP 响应）
 - `ufwd delete allow/deny <规则>`: 删除指定规则
 
 ### 传递给 ufw 的命令
@@ -167,16 +167,18 @@ sudo systemctl restart ufw
 
 ⚠️ **备份文件位置：**
 
-初始化时会在同一目录下创建带时间戳的备份文件：
+初始化时会创建固定的备份文件（首次运行）：
 ```
-/etc/ufw/after.rules-ufwd-backup-20241027-141530
-/etc/ufw/after6.rules-ufwd-backup-20241027-141530
+/etc/ufw/after.rules_original
+/etc/ufw/after6.rules_original
 ```
+
+如需恢复，使用: `sudo ufwd uninit`
 
 ## 设计原则
 
 1. **零学习成本**: `ufwd` 命令格式与 `ufw` 完全一致
-2. **清晰的组织**: 所有规则集中管理在 "# 4️⃣ 开启容器端口" 部分
+2. **清晰的规则管理**: 自动将规则添加到指定位置，保持文件结构清晰
 3. **安全性**: 自动备份，防止误操作
 4. **便捷性**: 智能查找初始化文件，简化安装过程
 
@@ -192,7 +194,7 @@ sudo systemctl restart ufw
 ### 规则没有生效
 
 1. 确认已重启 UFW: `sudo systemctl restart ufw`
-2. 检查规则是否正确添加到文件: `sudo cat /etc/ufw/after.rules | grep -A 10 "4️⃣"`
+2. 检查规则是否正确添加到文件: `sudo cat /etc/ufw/after.rules | grep DOCKER-USER`
 3. 查看 UFW 状态: `sudo ufwd status`
 
 ## 许可证
