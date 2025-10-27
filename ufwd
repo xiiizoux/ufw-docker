@@ -613,6 +613,8 @@ function handle_show() {
 
 # Handle delete command
 function handle_delete() {
+    # Skip "delete" and get the actual action (allow/deny/reject)
+    shift  # Skip "delete"
     local first_arg="${1:-}"
     
     local action="${first_arg}"
@@ -622,15 +624,15 @@ function handle_delete() {
         # This is likely a numbered delete or invalid command
         # For numbered deletes, pass to ufw
         if [[ "$first_arg" =~ ^[0-9]+$ ]]; then
-            ufw "$@"
+            ufw delete "$@"
             return
         fi
         
         # Invalid delete command
-        die "Invalid delete command syntax"
+        die "Invalid delete command syntax. Expected: ufwd delete allow|deny|reject ..."
     fi
     
-    shift
+    shift  # Skip the action
     
     check_ufw strict
     
