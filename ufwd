@@ -154,7 +154,6 @@ function delete_rule_by_pattern() {
             # Delete the line if ALL pattern components match
             if [[ "$should_delete" == true ]]; then
                 found=true
-                info "Deleting line: $line"
                 continue
             fi
         fi
@@ -164,7 +163,6 @@ function delete_rule_by_pattern() {
     
     if [[ "$found" == true ]]; then
         cp "$temp_file" "$file"
-        info "Deleted matching rule from $file"
         rm "$temp_file"
         return 0
     fi
@@ -332,9 +330,6 @@ function build_delete_pattern() {
     if [[ ${#parts[@]} -gt 0 ]]; then
         pattern=$(IFS=" " ; echo "${parts[*]}")
     fi
-    
-    # Debug output
-    info "Delete pattern: $pattern"
     
     echo "$pattern"
 }
@@ -644,10 +639,6 @@ function handle_delete() {
         die "Unable to determine pattern for deletion. Please specify port or source."
     fi
     
-    info "Deleting rules matching: $pattern"
-    info "Will check IPv4 file: $AFTER_RULES"
-    info "Will check IPv6 file: $AFTER6_RULES"
-    
     # IMPORTANT: We ONLY delete from after.rules and after6.rules files
     # We do NOT call ufw delete command
     
@@ -663,21 +654,10 @@ function handle_delete() {
     fi
     
     if [[ "$deleted_v4" == true ]] || [[ "$deleted_v6" == true ]]; then
-        info "✓ Rule deleted from after.rules files!"
+        info "✓ Rule deleted!"
         info "  Restart UFW to apply changes: sudo systemctl restart ufw"
     else
-        info "Could not delete non-existent rule"
-        info "Checked files:"
-        if [[ -f "$AFTER_RULES" ]]; then
-            info "  IPv4: $AFTER_RULES"
-            info "Checking IPv4 rules after marker:"
-            grep -A 10 "$SECTION_MARKER_IPV4" "$AFTER_RULES" 2>/dev/null || info "    No rules found after marker"
-        fi
-        if [[ -f "$AFTER6_RULES" ]]; then
-            info "  IPv6: $AFTER6_RULES"  
-            info "Checking IPv6 rules after marker:"
-            grep -A 10 "$SECTION_MARKER_IPV6" "$AFTER6_RULES" 2>/dev/null || info "    No rules found after marker"
-        fi
+        info "Could not delete: rule not found"
     fi
 }
 
