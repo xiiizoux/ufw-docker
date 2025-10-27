@@ -613,26 +613,25 @@ function handle_show() {
 
 # Handle delete command
 function handle_delete() {
-    # Skip "delete" and get the actual action (allow/deny/reject)
-    shift  # Skip "delete"
+    # Arguments are: allow/deny/reject, from, XXX, to, any, port, YYY
     local first_arg="${1:-}"
     
     local action="${first_arg}"
     
-    # If first arg is not allow/deny/reject, we need to handle it differently
-    if [[ "$first_arg" != "allow" && "$first_arg" != "deny" && "$first_arg" != "reject" ]]; then
-        # This is likely a numbered delete or invalid command
-        # For numbered deletes, pass to ufw
-        if [[ "$first_arg" =~ ^[0-9]+$ ]]; then
+    # Validate the action
+    if [[ "$action" != "allow" && "$action" != "deny" && "$action" != "reject" ]]; then
+        # This is likely a numbered delete (ufw delete 1) or invalid
+        if [[ "$action" =~ ^[0-9]+$ ]]; then
             ufw delete "$@"
             return
         fi
         
-        # Invalid delete command
-        die "Invalid delete command syntax. Expected: ufwd delete allow|deny|reject ..."
+        # Invalid command
+        die "Invalid delete command syntax. Expected: ufwd delete [allow|deny|reject] ARGS"
     fi
     
-    shift  # Skip the action
+    # Skip the action to get remaining parameters
+    shift
     
     check_ufw strict
     
@@ -706,6 +705,9 @@ function main() {
             ;;
     delete)
             # Handle rule deletions - ONLY from after.rules files
+            # The full command is: ufwd delete allow from XXX
+            # So we pass everything after "delete" to handle_delete
+            shift  # Skip "delete", remaining args are the action and parameters
             handle_delete "$@"
             ;;
         insert|prepend)
