@@ -547,8 +547,12 @@ function handle_status() {
             while IFS= read -r line || [[ -n "$line" ]]; do
                 ((line_num++))
                 if [[ $line_num -gt $marker_line_ipv4 ]]; then
+                    # Check if this is the next section (section 5 starts)
+                    if [[ "$line" =~ ^#\ [0-9]+\. ]]; then
+                        break
+                    fi
                     # Check if this is a DOCKER-USER rule (not just a comment)
-                    if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                    if [[ "$line" =~ ^-A\ DOCKER-USER ]]; then
                         if [[ "$has_ipv4_rules" == false ]]; then
                             echo "IPv4 Rules:"
                             has_ipv4_rules=true
@@ -579,8 +583,12 @@ function handle_status() {
             while IFS= read -r line || [[ -n "$line" ]]; do
                 ((line_num++))
                 if [[ $line_num -gt $marker_line_ipv6 ]]; then
+                    # Check if this is the next section (section 5 starts)
+                    if [[ "$line" =~ ^#\ [0-9]+\. ]]; then
+                        break
+                    fi
                     # Check if this is a DOCKER-USER rule
-                    if [[ "$line" =~ ^-A\ DOCKER-USER.*-j\ (RETURN|DROP|REJECT) ]]; then
+                    if [[ "$line" =~ ^-A\ DOCKER-USER ]]; then
                         if [[ "$has_ipv6_rules" == false ]]; then
                             echo "IPv6 Rules:"
                             has_ipv6_rules=true
