@@ -1,0 +1,71 @@
+#
+# rules.input-after
+#
+# Rules that should be run after the ufw command line added rules. Custom
+# rules should be added to one of these chains:
+#   ufw6-after-input
+#   ufw6-after-output
+#   ufw6-after-forward
+#
+
+# Don't delete these required lines, otherwise there will be errors
+*filter
+:ufw6-after-input - [0:0]
+:ufw6-after-output - [0:0]
+:ufw6-after-forward - [0:0]
+# End required lines
+
+# ============================================================
+# docker - Add custom chains (must be defined before use)
+# ============================================================
+:DOCKER-USER - [0:0]
+:ufw-docker-logging-deny - [0:0]
+:ufw-user-forward - [0:0]
+# ============================================================
+
+# don't log noisy services by default
+-A ufw6-after-input -p udp --dport 137 -j ufw6-skip-to-policy-input
+-A ufw6-after-input -p udp --dport 138 -j ufw6-skip-to-policy-input
+-A ufw6-after-input -p tcp --dport 139 -j ufw6-skip-to-policy-input
+-A ufw6-after-input -p tcp --dport 445 -j ufw6-skip-to-policy-input
+-A ufw6-after-input -p udp --dport 546 -j ufw6-skip-to-policy-input
+-A ufw6-after-input -p udp --dport 547 -j ufw6-skip-to-policy-input
+
+# ============================================================
+# docker - DOCKER-USER chain rules
+# ============================================================
+
+# 1. Allow established and related connections
+-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+# 2. Allow host and Docker internal network (RETURN = pass through)
+-A DOCKER-USER -s ::1 -j RETURN
+
+# 3. Allow DNS responses
+-A DOCKER-USER -p udp -m udp --sport 53 --dport 1024:65535 -j RETURN
+
+# 4. Container port access rules (add your rules here)
+-A DOCKER-USER -p tcp -m tcp --dport 80 -s 2400:cb00::/32 -j RETURN
+
+# 5. Block container from scanning host private networks
+-A DOCKER-USER -p tcp --tcp-flags FIN,SYN,RST,ACK SYN -d fc00::/7 -j ufw-docker-logging-deny
+-A DOCKER-USER -p tcp --tcp-flags FIN,SYN,RST,ACK SYN -d fe80::/10 -j ufw-docker-logging-deny
+-A DOCKER-USER -p udp --dport 0:32767 -d fc00::/7 -j ufw-docker-logging-deny
+-A DOCKER-USER -p udp --dport 0:32767 -d fe80::/10 -j ufw-docker-logging-deny
+
+# 6. Pass other outbound container traffic to UFW forward processing
+-A DOCKER-USER -j ufw-user-forward
+
+# 7. Return to main chain after processing
+-A DOCKER-USER -j RETURN
+
+# 8. ufw-docker-logging-deny logging and drop
+-A ufw-docker-logging-deny -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW DOCKER BLOCK IPV6] "
+-A ufw-docker-logging-deny -j DROP
+
+# ============================================================
+# docker - End of DOCKER-USER chain rules
+# ============================================================
+
+# don't delete the 'COMMIT' line or these rules won't be processed
+COMMIT
