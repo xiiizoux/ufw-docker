@@ -45,7 +45,6 @@
 -A DOCKER-USER -p udp -m udp --sport 53 --dport 1024:65535 -j RETURN
 
 # 4. Container port access rules (add your rules here)
--A DOCKER-USER -p tcp -m tcp --dport 80 -s 2400:cb00::/32 -j RETURN
 
 # 5. Block container from scanning host private networks
 -A DOCKER-USER -p tcp --tcp-flags FIN,SYN,RST,ACK SYN -d fc00::/7 -j ufw-docker-logging-deny
