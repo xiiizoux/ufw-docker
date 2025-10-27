@@ -18,20 +18,31 @@
 
 ### 1. 安装
 
+#### 方法 1: 一行命令安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/install.sh | sudo bash
+```
+
+#### 方法 2: 本地安装
+
+如果已经克隆了仓库：
+
 ```bash
 sudo ./install.sh
 ```
 
-或者手动安装：
+#### 方法 3: 手动安装
 
 ```bash
-# 复制脚本
-sudo cp ufwd /usr/local/bin/ufwd
+# 下载脚本
+sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/ufwd -o /usr/local/bin/ufwd
 sudo chmod +x /usr/local/bin/ufwd
 
-# 复制初始化文件（可选，脚本会自动查找）
+# 下载初始化文件
 sudo mkdir -p /usr/local/share/ufwd
-sudo cp after.rules after6.rules /usr/local/share/ufwd/
+sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/after.rules -o /usr/local/share/ufwd/after.rules
+sudo curl -fsSL https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main/after6.rules -o /usr/local/share/ufwd/after6.rules
 ```
 
 ### 2. 初始化

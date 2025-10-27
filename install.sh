@@ -3,9 +3,9 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR="/usr/local/bin"
 SHARE_DIR="/usr/local/share/ufwd"
+GITHUB_BASE="https://raw.githubusercontent.com/xiiizoux/ufw-docker/refs/heads/main"
 
 echo "Installing ufwd..."
 
@@ -16,20 +16,27 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Install the script
-echo "Copying ufwd to $INSTALL_DIR..."
-cp "$SCRIPT_DIR/ufwd" "$INSTALL_DIR/ufwd"
-chmod +x "$INSTALL_DIR/ufwd"
-echo "✓ Installed $INSTALL_DIR/ufwd"
+# Check for curl
+if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required but not installed."
+    echo "Please install curl first: sudo apt-get install curl"
+    exit 1
+fi
+
+# Download and install the script
+echo "Downloading ufwd from GitHub..."
+curl -fsSL "${GITHUB_BASE}/ufwd" -o "${INSTALL_DIR}/ufwd"
+chmod +x "${INSTALL_DIR}/ufwd"
+echo "✓ Installed ${INSTALL_DIR}/ufwd"
 
 # Install init files
-echo "Creating $SHARE_DIR..."
-mkdir -p "$SHARE_DIR"
+echo "Creating ${SHARE_DIR}..."
+mkdir -p "${SHARE_DIR}"
 
-echo "Copying init files..."
-cp "$SCRIPT_DIR/after.rules" "$SHARE_DIR/after.rules"
-cp "$SCRIPT_DIR/after6.rules" "$SHARE_DIR/after6.rules"
-echo "✓ Installed init files to $SHARE_DIR"
+echo "Downloading init files..."
+curl -fsSL "${GITHUB_BASE}/after.rules" -o "${SHARE_DIR}/after.rules"
+curl -fsSL "${GITHUB_BASE}/after6.rules" -o "${SHARE_DIR}/after6.rules"
+echo "✓ Installed init files to ${SHARE_DIR}"
 
 echo ""
 echo "Installation complete!"
